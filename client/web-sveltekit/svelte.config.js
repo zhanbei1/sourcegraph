@@ -52,9 +52,8 @@ const config = {
     alias: {
       // Makes it easier to refer to files outside packages (such as images)
       $root: '../../',
-      // Used inside tests for easy access to helpers
-      $testdata: 'src/testdata.ts',
       $mocks: 'src/testing/mocks.ts',
+      // Used inside tests for easy access to helpers
       $testing: 'src/testing',
       // Map node-module to browser version
       path: '../../node_modules/path-browserify',
@@ -70,7 +69,7 @@ const config = {
     typescript: {
       config: config => {
         config.extends = '../../../tsconfig.base.json'
-        config.include = [...(config.include ?? []), '../src/**/*.tsx', '../.storybook/*.ts']
+        config.include = [...(config.include ?? []), '../src/**/*.tsx', '../.storybook/*.ts', '../dev/**/*.ts']
       },
     },
     paths: {

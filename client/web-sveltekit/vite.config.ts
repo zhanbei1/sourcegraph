@@ -1,129 +1,18 @@
-import { dirname, join } from 'path'
-import { fileURLToPath } from 'url'
+import { join } from 'path'
 
-import { generate, type CodegenConfig } from '@graphql-codegen/cli'
-import graphql from '@rollup/plugin-graphql'
 import { sveltekit } from '@sveltejs/kit/vite'
-import { defineConfig, mergeConfig, type Plugin, type UserConfig } from 'vite'
+import { defineConfig, mergeConfig, type UserConfig } from 'vite'
 import inspect from 'vite-plugin-inspect'
 
-const __dirname = dirname(fileURLToPath(import.meta.url))
-
-// Generates typescript types for gql-tags and .graphql files
-// We don't use vite-plugin-graphql-codegen because it doesn't support watch mode
-// when documents are defined separately for every generated file.
-// Defining a single set of documents at the top level doesn't work either because
-// it would generated unnecessary files (e.g. .qql.d.ts files for .ts file) and also
-// caused duplicate code generation issues.
-function generateGraphQLTypes(): Plugin {
-    const codgegenConfig: CodegenConfig = {
-        generates: {
-            './src/lib/graphql-operations.ts': {
-                documents: ['src/{lib,routes}/**/*.ts', '!src/lib/graphql-{operations,types}.ts'],
-                config: {
-                    onlyOperationTypes: true,
-                    enumValues: '$lib/graphql-types',
-                    //interfaceNameForOperations: 'SvelteKitGraphQlOperations',
-                },
-                plugins: ['typescript', 'typescript-operations'],
-            },
-            'src/lib/graphql-types.ts': {
-                plugins: ['typescript'],
-            },
-            'src/': {
-                documents: ['src/**/*.gql', '!src/**/*.gql.d.ts'],
-                preset: 'near-operation-file',
-                presetConfig: {
-                    baseTypesPath: 'lib/graphql-types',
-                    extension: '.gql.d.ts',
-                },
-                config: {
-                    useTypeImports: true,
-                },
-                plugins: ['typescript-operations', `${__dirname}/dev/typed-document-node.cjs`],
-            },
-        },
-        schema: '../../cmd/frontend/graphqlbackend/*.graphql',
-        errorsOnly: true,
-        config: {
-            // https://the-guild.dev/graphql/codegen/plugins/typescript/typescript-operations#config-api-reference
-            arrayInputCoercion: false,
-            preResolveTypes: true,
-            operationResultSuffix: 'Result',
-            omitOperationSuffix: true,
-            namingConvention: {
-                typeNames: 'keep',
-                enumValues: 'keep',
-                transformUnderscore: true,
-            },
-            declarationKind: 'interface',
-            avoidOptionals: {
-                field: true,
-                inputValue: false,
-                object: true,
-            },
-            scalars: {
-                DateTime: 'string',
-                JSON: 'object',
-                JSONValue: 'unknown',
-                GitObjectID: 'string',
-                JSONCString: 'string',
-                PublishedValue: "boolean | 'draft'",
-                BigInt: 'string',
-            },
-        },
-    }
-
-    // Cheap custom function to check whether we should run codegen for the provided path
-    function shouldRunCodegen(path: string): boolean {
-        // Do not run codegen for generated files
-        if (/(graphql-(operations|types)|\.gql\.d)\.ts$/.test(path)) {
-            return false
-        }
-        if (/\.(ts|gql)$/.test(path)) {
-            return true
-        }
-        return false
-    }
-
-    async function codegen(): Promise<void> {
-        try {
-            await generate(codgegenConfig, true)
-        } catch {
-            // generate already logs errors to the console
-            // but we still need to catch it otherwise vite will terminate
-        }
-    }
-
-    return {
-        name: 'graphql-codegen',
-        buildStart() {
-            return codegen()
-        },
-        configureServer(server) {
-            server.watcher.on('add', path => {
-                if (shouldRunCodegen(path)) {
-                    codegen()
-                }
-            })
-            server.watcher.on('change', path => {
-                if (shouldRunCodegen(path)) {
-                    codegen()
-                }
-            })
-        },
-    }
-}
+import graphqlCodegen from './dev/vite-graphql-codegen'
 
 export default defineConfig(({ mode }) => {
     let config: UserConfig = {
         plugins: [
             sveltekit(),
-            // Generates typescript types for gql-tags and .graphql files
-            generateGraphQLTypes(),
+            // Generates typescript types for gql-tags and .gql files
+            graphqlCodegen(),
             inspect(),
-            // Parses .graphql files and imports them as AST
-            graphql(),
         ],
         define:
             mode === 'test'
@@ -176,6 +65,12 @@ export default defineConfig(({ mode }) => {
                     find: /^react-icons\/(.+)$/,
                     replacement: 'react-icons/$1/index.js',
                 },
+                // We generate corresponding .gql.ts files for .gql files.
+                // This alias allows us to import .gql files and have them resolved to the generated .gql.ts files.
+                {
+                    find: /^(.*)\.gql$/,
+                    replacement: '$1.gql.ts',
+                },
             ],
         },
 
@@ -188,6 +83,7 @@ export default defineConfig(({ mode }) => {
 
         test: {
             setupFiles: './src/testing/setup.ts',
+            include: ['src/**/*.test.ts'],
         },
     }
 
